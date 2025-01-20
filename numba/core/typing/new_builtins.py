@@ -271,9 +271,19 @@ class BinOpPower(ConcreteTemplate):
 
 
 @infer_global(pow)
-class PowerBuiltin(BinOpPower):
-    # TODO add 3 operand version
-    pass
+class PowerBuiltin(ConcreteTemplate):
+    cases = list(integer_binop_cases)
+    # Ensure that float32 ** int doesn't go through DP computations
+    cases += [signature(types.np_float32, types.np_float32, op)
+              for op in (types.np_int32, types.np_int64, types.np_uint64)]
+    cases += [signature(types.np_float64, types.np_float64, op)
+              for op in (types.np_int32, types.np_int64, types.np_uint64)]
+    cases += [signature(op, op, op)
+              for op in sorted(types.np_real_domain)]
+    cases += [signature(op, op, op)
+              for op in sorted(types.np_complex_domain)]
+    cases += [signature(op1, op2, op3, op1)
+              for op1, op2, op3 in itertools.product(all_ints, repeat=3)]
 
 
 class BitwiseShiftOperation(ConcreteTemplate):
