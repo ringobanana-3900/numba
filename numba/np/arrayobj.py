@@ -2038,6 +2038,31 @@ def numpy_rot90(m, k=1):
     return impl
 
 
+@overload(np.copyto)
+def np_copyto(dst, src):
+    if not isinstance(dst, types.Array):
+        raise errors.TypingError('The first argument "dst" must be an array')
+
+    if not type_can_asarray(src):
+        raise errors.TypingError('The second argument "src" must be an array-like')
+
+    if is_scalar(src):
+        def impl(dst, src):
+            dst_flat = dst.flat
+            src_ = np.astype(src, dst.dtype)
+            for idx in range(len(dst_flat)):
+                dst_flat[idx] = src_
+    else:
+        def impl(dst, src):
+            dst_flat = dst.flat
+            src_ = np.astype(src, dst.dtype)
+            src_flat = np.broadcast_to(src_, dst.shape).flat
+            for idx in range(len(dst_flat)):
+                dst_flat[idx] = src_flat[idx]
+
+    return impl
+
+
 def _attempt_nocopy_reshape(context, builder, aryty, ary,
                             newnd, newshape, newstrides):
     """
