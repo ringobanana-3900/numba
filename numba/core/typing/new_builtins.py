@@ -37,6 +37,27 @@ class PrintItem(AbstractTemplate):
         return signature(types.none, *args)
 
 
+class BinaryFormat(ConcreteTemplate):
+    cases = [signature(types.unicode_type, ty) for ty in (
+      types.py_integer_domain + types.np_integer_domain
+    )]
+
+
+@infer_global(bin)
+class Bin(BinaryFormat):
+    pass
+
+
+@infer_global(oct)
+class Oct(BinaryFormat):
+    pass
+
+
+@infer_global(hex)
+class Hex(BinaryFormat):
+    pass
+
+
 @infer_global(abs)
 class Abs(ConcreteTemplate):
     int_cases = [signature(ty, ty) for ty in sorted(types.py_signed_domain)]
