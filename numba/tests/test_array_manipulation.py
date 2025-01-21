@@ -1262,7 +1262,7 @@ class TestArrayManipulation(MemoryLeakMixin, TestCase):
         self.assertIn("The argument to np.size must be array-like",
                       str(raises.exception))
 
-    def test_size(self):
+    def test_ndim(self):
         pyfunc = numpy_ndim
         cfunc = jit(nopython=True)(pyfunc)
 
