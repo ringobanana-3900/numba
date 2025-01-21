@@ -2038,6 +2038,13 @@ def numpy_rot90(m, k=1):
     return impl
 
 
+@overload(np.ndim)
+def np_ndim(a):
+    if not type_can_asarray(a):
+      return
+    return lambda a: np.asarray(a).ndim
+
+
 def _attempt_nocopy_reshape(context, builder, aryty, ary,
                             newnd, newshape, newstrides):
     """
