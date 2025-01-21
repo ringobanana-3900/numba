@@ -177,6 +177,9 @@ def numpy_shape(arr):
 def numpy_size(arr):
     return np.size(arr)
 
+def numpy_ndim(arr):
+    return np.ndim(arr)
+
 
 def numpy_flatnonzero(a):
     return np.flatnonzero(a)
