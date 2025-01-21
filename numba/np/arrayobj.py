@@ -2049,13 +2049,13 @@ def np_copyto(dst, src):
     if is_scalar(src):
         def impl(dst, src):
             dst_flat = dst.flat
-            src_ = np.astype(src, dst.dtype)
+            src_ = np.asarray(src, dst.dtype)
             for idx in range(len(dst_flat)):
                 dst_flat[idx] = src_
     else:
         def impl(dst, src):
             dst_flat = dst.flat
-            src_ = np.astype(src, dst.dtype)
+            src_ = np.asarray(src, dst.dtype)
             src_flat = np.broadcast_to(src_, dst.shape).flat
             for idx in range(len(dst_flat)):
                 dst_flat[idx] = src_flat[idx]
