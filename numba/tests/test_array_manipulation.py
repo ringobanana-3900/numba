@@ -1262,6 +1262,30 @@ class TestArrayManipulation(MemoryLeakMixin, TestCase):
         self.assertIn("The argument to np.size must be array-like",
                       str(raises.exception))
 
+    def test_size(self):
+        pyfunc = numpy_ndim
+        cfunc = jit(nopython=True)(pyfunc)
+
+        def check(x):
+            expected = pyfunc(x)
+            got = cfunc(x)
+            self.assertPreciseEqual(got, expected)
+
+        # check arrays
+        for t in [(), (1,), (2, 3,), (4, 5, 6)]:
+            arr = np.empty(t)
+            check(arr)
+
+        # check scalar values
+        for t in [1, False, 3.14, np.int8(4), np.float32(2.718)]:
+            check(t)
+
+        with self.assertRaises(TypingError) as raises:
+            cfunc('a')
+
+        self.assertIn("The argument to np.ndim must be array-like",
+                      str(raises.exception))
+
     def test_flatnonzero_basic(self):
         pyfunc = numpy_flatnonzero
         cfunc = jit(nopython=True)(pyfunc)
