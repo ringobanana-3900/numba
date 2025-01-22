@@ -2283,6 +2283,15 @@ def np_insert(arr, obj, values, axis=None):
             ret[slices] = values_
             slices = (slice(),)*axis + (slice(obj+M, N+M),) + (slice(),)*(ndim-axis-1)
             ret[slices] = arr_[slices]
+            # maybe this could be more simple
+            # for idx in np.ndindex(newshape):
+            #     if idx[axis] < obj:
+            #         ret[idx] = arr_[idx]
+            #     elif idx[axis] < obj+M:
+            #         ret[idx] = values_[idx[axis]-obj]
+            #     else:
+            #         idx[axis] -= M
+            #         ret[idx] = arr_[idx]
 
             return ret
 
