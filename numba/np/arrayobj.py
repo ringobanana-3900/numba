@@ -2236,6 +2236,24 @@ def numpy_resize(a, new_shape):
     return impl
 
 
+@overload(np.insert)
+def np_insert(arr, obj, values, axis=None):
+    """
+    Reimplementation of `np.insert` based on original NumPy source code:
+    https://github.com/numpy/numpy/blob/v1.18.1/numpy/lib/function_base.py#L4429-L4633
+    Note: At the moment only `obj` values of type `types.Integer` or slice are supported.
+    """
+    if not type_can_asarray(arr):
+        raise errors.TypingError('The first argument "arr" must be array-like')
+    if not obj_is_int_slice_or_sequence_of_ints(obj):
+        raise errors.TypingError('The second argument "obj" must be an integer, a slice'
+                                 ' or a sequence of integers')
+    if not type_can_asarray(values):
+        raise errors.TypingError('The third argument "values" must be array-like')
+    if not isinstance(axis, (types.NoneType, types.Integer)):
+        raise errors.TypingError('The fourth argument "axis" must be None or an integer')
+
+
 @overload(np.append)
 def np_append(arr, values, axis=None):
 
