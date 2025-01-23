@@ -2236,189 +2236,228 @@ def numpy_resize(a, new_shape):
     return impl
 
 
-@overload(np.insert)
-def np_insert(arr, obj, values, axis=None):
-    if not type_can_asarray(arr):
-        raise errors.TypingError('The first argument "arr" must be array-like')
-
-    # The Issues which must be considered
-    # 1.  Is numpy.exceptions.AxisError supported ?
-    #     I havn't tested it yet
-
-    if isinstance(obj, types.Integer):
-        def impl(arr, obj, values, axis=None):
-            if axis is None:
-                # insert to flat array
-                arr_ = np.asarray(arr).ravel()
-                ndim = arr_.ndim
-                axis = max(0, ndim - 1)
-            else:
-                arr_ = np.asarray(arr)
-                ndim = arr_.ndim
-                if not (-ndim <= axis < ndim):
-                    msg = f'axis {axis} is out of bounds for array of dimension {ndim}'
-                    raise ValueError(msg)
-                if axis < 0:
-                    axis += ndim
-            arrorder = 'F' if arr.flags.fnc else 'C'
-
-            N = arr_.shape[axis]
-
-            if not (-N <= obj < N):
-                msg = f"index {obj} is out of bounds for axis {axis} with size {N}"
-                raise IndexError(msg)
-            if obj < 0:
-                obj += N
-
-            M = len(values)
-            values_shape = (1,)*axis + (M,) + (1,)*(ndim-axis-1)
-            values_ = np.reshape(values, values_shape)
-
-            newshape = arr_.shape[:axis] + (N+M,) + arr_.shape[axis+1:]
-            ret = np.empty(newshape)
-
-            slices = (slice(),)*axis + (slice(0,     obj),) + (slice(),)*(ndim-axis-1)
-            ret[slices] = arr_[slices]
-            slices = (slice(),)*axis + (slice(obj,   obj+M),) + (slice(),)*(ndim-axis-1)
-            ret[slices] = values_
-            slices = (slice(),)*axis + (slice(obj+M, N+M),) + (slice(),)*(ndim-axis-1)
-            ret[slices] = arr_[slices]
-            # maybe this could be more simple
-            # for idx in np.ndindex(newshape):
-            #     if idx[axis] < obj:
-            #         ret[idx] = arr_[idx]
-            #     elif idx[axis] < obj+M:
-            #         ret[idx] = values_[idx[axis]-obj]
-            #     else:
-            #         idx[axis] -= M
-            #         ret[idx] = arr_[idx]
-
-            return ret
-
-    elif isinstance(obj, types.SliceType):
-        def impl(arr, obj, values, axis=None):
-            arr_ = np.asarray(arr)
+def _np_insert_int(arr, obj, values, axis=None):
+    if axis is None:
+        # insert to flat array
+        arr_ = np.asarray(arr).ravel()
+        ndim = arr_.ndim
+        axis = max(0, ndim - 1)
     else:
-        # sequence of boolean is supported from version 2.1.2
-        # https://numpy.org/doc/stable/reference/generated/numpy.insert.html
-        if np.versions >= (2,1,2):
-            err = errors.TypingError('The second argument "obj" must be an integer, '
+        arr_ = np.asarray(arr)
+        ndim = arr_.ndim
+        if not (-ndim <= axis < ndim):
+            msg = f'axis {axis} is out of bounds for array of dimension {ndim}'
+            raise np.exceptions.AxisError(msg)
+        if axis < 0:
+            axis += ndim
+    arrorder = 'F' if arr.flags.fnc else 'C'
+
+    N = arr_.shape[axis]
+
+    if not (-N <= obj < N):
+        msg = f"index {obj} is out of bounds for axis {axis} with size {N}"
+        raise IndexError(msg)
+    if obj < 0:
+        obj += N
+
+    M = len(values)
+    values_shape = (1,)*axis + (M,) + (1,)*(ndim-axis-1)
+    values_ = np.reshape(values, values_shape)
+
+    newshape = arr_.shape[:axis] + (N+M,) + arr_.shape[axis+1:]
+    ret = np.empty(newshape)
+
+    slices = (slice(),)*axis + (slice(0,     obj),) + (slice(),)*(ndim-axis-1)
+    ret[slices] = arr_[slices]
+    slices = (slice(),)*axis + (slice(obj,   obj+M),) + (slice(),)*(ndim-axis-1)
+    ret[slices] = values_
+    slices = (slice(),)*axis + (slice(obj+M, N+M),) + (slice(),)*(ndim-axis-1)
+    ret[slices] = arr_[slices]
+
+    return ret
+def insert(arr, obj, values, axis=None):
+    ndim = arr.ndim
+    arrorder = 'F' if arr.flags.fnc else 'C'
+    if axis is None:
+        axis = ndim - 1
+    else:
+        axis = normalize_axis_index(axis, ndim)
+    slobj = [slice(None)]*ndim
+    N = arr.shape[axis]
+    newshape = list(arr.shape)
+
+    index = obj
+    if index < -N or index > N:
+        raise IndexError(f"index {obj} is out of bounds for axis {axis} "
+                         f"with size {N}")
+    if (index < 0):
+        index += N
+
+    # There are some object array corner cases here, but we cannot avoid
+    # that:
+    values = array(values, copy=None, ndmin=arr.ndim, dtype=arr.dtype)
+    if indices.ndim == 0:
+        # broadcasting is very different here, since a[:,0,:] = ... behaves
+        # very different from a[:,[0],:] = ...! This changes values so that
+        # it works likes the second case. (here a[:,0:1,:])
+        values = np.moveaxis(values, 0, axis)
+    numnew = values.shape[axis]
+    newshape[axis] += numnew
+    new = empty(newshape, arr.dtype, arrorder)
+    
+    slobj = (slice(None),)*axis + (slice(None, index),) + (slice(None),)*(ndim-axis-1)
+    new[slobj] = arr[slobj]
+
+    slobj = (slice(None),)*axis + (slice(index, index+numnew),) + (slice(None),)*(ndim-axis-1)
+    new[slobj] = values
+
+    slobj = (slice(None),)*axis + (slice(index+numnew, None),) + (slice(None),)*(ndim-axis-1)
+    
+    slobj2 = (slice(None),)*axis + (slice(index, None),) + (slice(None),)*(ndim-axis-1)
+    new[slobj] = arr[slobj2]
+
+    return new
+
+# sequence of boolean for argument "obj" is supported from version 2.1.2
+# https://numpy.org/doc/stable/reference/generated/numpy.insert.html
+if np.versions >= (2,1,2):
+    @overload(np.insert)
+    def np_insert(arr, obj, values, axis=None):
+        if not type_can_asarray(arr):
+            raise errors.TypingError('The first argument "arr" must be array-like')
+
+        if isinstance(obj, types.Integer):
+            impl = _np_insert_int
+        elif isinstance(obj, types.SliceType):
+            impl = _np_insert_slice
+        elif getattr(obj, 'ndim', 0) <= 1 and isinstance(obj.dtype, types.Integer):
+            impl = _np_insert_seq_int
+        elif getattr(obj, 'ndim', 0) <= 1 and isinstance(obj.dtype, types.Boolean):
+            impl = _np_insert_seq_bool
+        else:
+            raise errors.TypingError('The second argument "obj" must be an integer, '
                                      'a slice or an one dimensional array-like of '
                                      'integers or boolean')
-            if getattr(obj, 'ndim', 1) == 1:
-                if isinstance(obj.dtype, types.Integer):
-                    def impl(arr, obj, values, axis=None):
-                        arr_ = np.asarray(arr)
-                if isinstance(obj.dtype, types.Boolean):
-                    def impl(arr, obj, values, axis=None):
-                        arr_ = np.asarray(arr)
+
+        if not type_can_asarray(values):
+            raise errors.TypingError('The third argument "values" must be array-like')
+
+        if not (cgutils.is_nonelike(axis) or isinstance(axis, types.Integer)):
+            raise errors.TypingError('The fourth argument "axis" must be None or an integer')
+    
+        return impl
+else:
+    @overload(np.insert)
+    def np_insert(arr, obj, values, axis=None):
+        if not type_can_asarray(arr):
+            raise errors.TypingError('The first argument "arr" must be array-like')
+
+        if isinstance(obj, types.Integer):
+            impl = _np_insert_int
+        elif isinstance(obj, types.SliceType):
+            impl = _np_insert_slice
+        elif getattr(obj, 'ndim', 0) <= 1 and isinstance(obj.dtype, types.Integer):
+            impl = _np_insert_seq_int
         else:
-            err = errors.TypingError('The second argument "obj" must be an integer, '
+            raise errors.TypingError('The second argument "obj" must be an integer, '
                                      'a slice or an one dimensional array-like of integers')
-            if getattr(obj, 'ndim', 1) == 1:
-                if isinstance(obj.dtype, types.Integer)):
-                    def impl(arr, obj, values, axis=None):
-                        arr_ = np.asarray(arr)
-        try:
-            impl
-        except NameError:
-            raise err
 
-    if not type_can_asarray(values):
-        raise errors.TypingError('The third argument "values" must be array-like')
+        if not type_can_asarray(values):
+            raise errors.TypingError('The third argument "values" must be array-like')
 
-    if not (cgutils.is_nonelike(axis) or isinstance(axis, types.Integer)):
-        raise errors.TypingError('The fourth argument "axis" must be None or an integer')
+        if not (cgutils.is_nonelike(axis) or isinstance(axis, types.Integer)):
+            raise errors.TypingError('The fourth argument "axis" must be None or an integer')
 
-    return impl
+        return impl
 
-    def impl(arr, obj, values, axis=None):
-        arr_ = np.asarray(arr)
-    
-        ndim = arr_.ndim
-        arrorder = 'F' if arr.flags.fnc else 'C'
-        
-        if axis is None:
-            axis = ndim - 1
-        else:
-            if not (-ndim <= axis < ndim):
-                raise ValueError(f'axis {axis} is out of bounds')
-            if axis < 0:
-                axis += ndim
-        
-        slobj = [slice(None)]*ndim
-        N = arr.shape[axis]
-        newshape = list(arr.shape)
-    
-        if isinstance(obj, slice):
-            # turn it into a range object
-            indices = arange(*obj.indices(N), dtype=intp)
-        else:
-            # need to copy obj, because indices will be changed in-place
-            indices = np.array(obj)
-            if indices.dtype == bool:
-                if obj.ndim != 1:
-                    raise ValueError('boolean array argument obj to insert '
-                                    'must be one dimensional')
-                indices = np.flatnonzero(obj)
-            elif indices.ndim > 1:
-                raise ValueError(
-                    "index array argument obj to insert must be one dimensional "
-                    "or scalar")
-        if indices.size == 1:
-            index = indices.item()
-            if index < -N or index > N:
-                raise IndexError(f"index {obj} is out of bounds for axis {axis} "
-                                 f"with size {N}")
-            if (index < 0):
-                index += N
-    
-            # There are some object array corner cases here, but we cannot avoid
-            # that:
-            values = array(values, copy=None, ndmin=arr.ndim, dtype=arr.dtype)
-            if indices.ndim == 0:
-                # broadcasting is very different here, since a[:,0,:] = ... behaves
-                # very different from a[:,[0],:] = ...! This changes values so that
-                # it works likes the second case. (here a[:,0:1,:])
-                values = np.moveaxis(values, 0, axis)
-            numnew = values.shape[axis]
-            newshape[axis] += numnew
-            new = empty(newshape, arr.dtype, arrorder)
-            slobj[axis] = slice(None, index)
-            new[tuple(slobj)] = arr[tuple(slobj)]
-            slobj[axis] = slice(index, index+numnew)
-            new[tuple(slobj)] = values
-            slobj[axis] = slice(index+numnew, None)
-            slobj2 = [slice(None)] * ndim
-            slobj2[axis] = slice(index, None)
-            new[tuple(slobj)] = arr[tuple(slobj2)]
-    
-            return conv.wrap(new, to_scalar=False)
-    
-        elif indices.size == 0 and not isinstance(obj, np.ndarray):
-            # Can safely cast the empty list to intp
-            indices = indices.astype(intp)
-    
-        indices[indices < 0] += N
-    
-        numnew = len(indices)
-        order = indices.argsort(kind='mergesort')   # stable sort
-        indices[order] += np.arange(numnew)
-    
+def insert(arr, obj, values, axis=None):
+    conv = _array_converter(arr)
+    arr, = conv.as_arrays(subok=False)
+
+    ndim = arr.ndim
+    arrorder = 'F' if arr.flags.fnc else 'C'
+    if axis is None:
+        if ndim != 1:
+            arr = arr.ravel()
+        # needed for np.matrix, which is still not 1d after being ravelled
+        ndim = arr.ndim
+        axis = ndim - 1
+    else:
+        axis = normalize_axis_index(axis, ndim)
+    slobj = [slice(None)]*ndim
+    N = arr.shape[axis]
+    newshape = list(arr.shape)
+
+    if isinstance(obj, slice):
+        # turn it into a range object
+        indices = arange(*obj.indices(N), dtype=intp)
+    else:
+        # need to copy obj, because indices will be changed in-place
+        indices = np.array(obj)
+        if indices.dtype == bool:
+            if obj.ndim != 1:
+                raise ValueError('boolean array argument obj to insert '
+                                'must be one dimensional')
+            indices = np.flatnonzero(obj)
+        elif indices.ndim > 1:
+            raise ValueError(
+                "index array argument obj to insert must be one dimensional "
+                "or scalar")
+    if indices.size == 1:
+        index = indices.item()
+        if index < -N or index > N:
+            raise IndexError(f"index {obj} is out of bounds for axis {axis} "
+                             f"with size {N}")
+        if (index < 0):
+            index += N
+
+        # There are some object array corner cases here, but we cannot avoid
+        # that:
+        values = array(values, copy=None, ndmin=arr.ndim, dtype=arr.dtype)
+        if indices.ndim == 0:
+            # broadcasting is very different here, since a[:,0,:] = ... behaves
+            # very different from a[:,[0],:] = ...! This changes values so that
+            # it works likes the second case. (here a[:,0:1,:])
+            values = np.moveaxis(values, 0, axis)
+        numnew = values.shape[axis]
         newshape[axis] += numnew
-        old_mask = ones(newshape[axis], dtype=bool)
-        old_mask[indices] = False
-    
         new = empty(newshape, arr.dtype, arrorder)
-        slobj2 = [slice(None)]*ndim
-        slobj[axis] = indices
-        slobj2[axis] = old_mask
-        new[tuple(slobj)] = values
-        new[tuple(slobj2)] = arr
-    
+        
+        slobj = (slice(None),)*axis + (slice(None, index),) + (slice(None),)*(ndim-axis-1)
+        new[slobj] = arr[slobj]
+
+        slobj = (slice(None),)*axis + (slice(index, index+numnew),) + (slice(None),)*(ndim-axis-1)
+        new[slobj] = values
+
+        slobj = (slice(None),)*axis + (slice(index+numnew, None),) + (slice(None),)*(ndim-axis-1)
+        
+        slobj2 = (slice(None),)*axis + (slice(index, None),) + (slice(None),)*(ndim-axis-1)
+        new[slobj] = arr[slobj2]
+
         return conv.wrap(new, to_scalar=False)
 
+    elif indices.size == 0 and not isinstance(obj, np.ndarray):
+        # Can safely cast the empty list to intp
+        indices = indices.astype(intp)
 
+    indices[indices < 0] += N
+
+    numnew = len(indices)
+    order = indices.argsort(kind='mergesort')   # stable sort
+    indices[order] += np.arange(numnew)
+
+    newshape[axis] += numnew
+    old_mask = ones(newshape[axis], dtype=bool)
+    old_mask[indices] = False
+
+    new = empty(newshape, arr.dtype, arrorder)
+    slobj2 = [slice(None)]*ndim
+    slobj[axis] = indices
+    slobj2[axis] = old_mask
+    new[tuple(slobj)] = values
+    new[tuple(slobj2)] = arr
+
+    return conv.wrap(new, to_scalar=False)
 
 @overload(np.append)
 def np_append(arr, values, axis=None):
