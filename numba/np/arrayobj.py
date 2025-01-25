@@ -2239,19 +2239,14 @@ def numpy_resize(a, new_shape):
 def _np_insert_int(arr, obj, values, axis=None):
     if axis is None:
         # insert to flat array
-        arr_ = np.asarray(arr).ravel()
+        arr_ = np.atleast_1d(arr).ravel()
         ndim = arr_.ndim
         axis = max(0, ndim - 1)
     else:
         arr_ = np.asarray(arr)
         ndim = arr_.ndim
-        if not (-ndim <= axis < ndim):
-            msg = f'axis {axis} is out of bounds for array of dimension {ndim}'
-            raise np.exceptions.AxisError(msg)
-        if axis < 0:
-            axis += ndim
-    arrorder = 'F' if arr.flags.fnc else 'C'
-
+        axis = normalize_axis("numpy.insert", "axis", ndim, axis)
+    
     N = arr_.shape[axis]
 
     if not (-N <= obj < N):
@@ -2281,12 +2276,13 @@ def insert(arr, obj, values, axis=None):
     if axis is None:
         axis = ndim - 1
     else:
-        axis = normalize_axis_index(axis, ndim)
+        axis = normalize_axis("numpy.insert", "axis", ndim, axis)
+      
     slobj = [slice(None)]*ndim
     N = arr.shape[axis]
     newshape = list(arr.shape)
 
-    index = obj
+    index = normalize_axis(obj)
     if index < -N or index > N:
         raise IndexError(f"index {obj} is out of bounds for axis {axis} "
                          f"with size {N}")
@@ -2318,21 +2314,47 @@ def insert(arr, obj, values, axis=None):
 
     return new
 
-# sequence of boolean for argument "obj" is supported from version 2.1.2
+# sequence of boolean for argument "obj" is supported since version 2.1.2
 # https://numpy.org/doc/stable/reference/generated/numpy.insert.html
-if np.versions >= (2,1,2):
+if np.versions < (2,1,2):
     @overload(np.insert)
     def np_insert(arr, obj, values, axis=None):
         if not type_can_asarray(arr):
             raise errors.TypingError('The first argument "arr" must be array-like')
 
+        ndim = getattr(obj, 'ndim', 0)
         if isinstance(obj, types.Integer):
             impl = _np_insert_int
         elif isinstance(obj, types.SliceType):
             impl = _np_insert_slice
-        elif getattr(obj, 'ndim', 0) <= 1 and isinstance(obj.dtype, types.Integer):
+        elif ndim <= 1 and isinstance(obj.dtype, types.Integer):
             impl = _np_insert_seq_int
-        elif getattr(obj, 'ndim', 0) <= 1 and isinstance(obj.dtype, types.Boolean):
+        else:
+            raise errors.TypingError('The second argument "obj" must be an integer, '
+                                     'a slice or an one dimensional array-like of integers')
+
+        if not type_can_asarray(values):
+            raise errors.TypingError('The third argument "values" must be array-like')
+
+        if not (cgutils.is_nonelike(axis) or isinstance(axis, types.Integer)):
+            raise errors.TypingError('The fourth argument "axis" must be None or an integer')
+
+        return impl
+
+else:
+    @overload(np.insert)
+    def np_insert(arr, obj, values, axis=None):
+        if not type_can_asarray(arr):
+            raise errors.TypingError('The first argument "arr" must be array-like')
+
+        ndim = getattr(obj, 'ndim', 0)
+        if isinstance(obj, types.Integer):
+            impl = _np_insert_int
+        elif isinstance(obj, types.SliceType):
+            impl = _np_insert_slice
+        elif ndim <= 1 and isinstance(obj.dtype, types.Integer):
+            impl = _np_insert_seq_int
+        elif ndim <= 1 and isinstance(obj.dtype, types.Boolean):
             impl = _np_insert_seq_bool
         else:
             raise errors.TypingError('The second argument "obj" must be an integer, '
@@ -2345,29 +2367,6 @@ if np.versions >= (2,1,2):
         if not (cgutils.is_nonelike(axis) or isinstance(axis, types.Integer)):
             raise errors.TypingError('The fourth argument "axis" must be None or an integer')
     
-        return impl
-else:
-    @overload(np.insert)
-    def np_insert(arr, obj, values, axis=None):
-        if not type_can_asarray(arr):
-            raise errors.TypingError('The first argument "arr" must be array-like')
-
-        if isinstance(obj, types.Integer):
-            impl = _np_insert_int
-        elif isinstance(obj, types.SliceType):
-            impl = _np_insert_slice
-        elif getattr(obj, 'ndim', 0) <= 1 and isinstance(obj.dtype, types.Integer):
-            impl = _np_insert_seq_int
-        else:
-            raise errors.TypingError('The second argument "obj" must be an integer, '
-                                     'a slice or an one dimensional array-like of integers')
-
-        if not type_can_asarray(values):
-            raise errors.TypingError('The third argument "values" must be array-like')
-
-        if not (cgutils.is_nonelike(axis) or isinstance(axis, types.Integer)):
-            raise errors.TypingError('The fourth argument "axis" must be None or an integer')
-
         return impl
 
 def insert(arr, obj, values, axis=None):
