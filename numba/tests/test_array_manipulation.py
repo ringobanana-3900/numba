@@ -188,6 +188,9 @@ def numpy_argwhere(a):
 def numpy_resize(a, new_shape):
     return np.resize(a, new_shape)
 
+def numpy_copyto(dst, src):
+    np.copyto(dst, src)
+
 
 class TestArrayManipulation(MemoryLeakMixin, TestCase):
     """
@@ -1557,6 +1560,33 @@ class TestArrayManipulation(MemoryLeakMixin, TestCase):
         np.testing.assert_array_equal(res_py, res_nb)
 
     def test_mutability_after_ravel(self):
+        # Reproduces another suggested problem in Issue #8370
+        # Namely that ravel should only return a writable array
+        # if a copy took place... otherwise leave it as it is.
+        self.disable_leak_check()
+        a_c = np.arange(9).reshape((3, 3)).copy()
+        a_f = a_c.copy(order='F')
+        a_c.flags.writeable = False
+        a_f.flags.writeable = False
+
+        def try_ravel_w_copy(a):
+            result = a.ravel()
+            return result
+
+        pyfunc = try_ravel_w_copy
+        cfunc = jit(nopython=True)(pyfunc)
+
+        ret_c = cfunc(a_c)
+        ret_f = cfunc(a_f)
+
+        msg = 'No copy was performed, so the ' \
+              'resulting array must not be writeable'
+        self.assertTrue(not ret_c.flags.writeable, msg)
+
+        msg = 'A copy was performed, yet the resulting array is not modifiable'
+        self.assertTrue(ret_f.flags.writeable, msg)
+
+    def test_copyto(self):
         # Reproduces another suggested problem in Issue #8370
         # Namely that ravel should only return a writable array
         # if a copy took place... otherwise leave it as it is.
