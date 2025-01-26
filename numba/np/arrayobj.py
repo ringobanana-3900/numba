@@ -2038,13 +2038,6 @@ def numpy_rot90(m, k=1):
     return impl
 
 
-@overload(np.ndim)
-def np_ndim(a):
-    if not type_can_asarray(a):
-      return
-    return lambda a: np.asarray(a).ndim
-
-
 def _attempt_nocopy_reshape(context, builder, aryty, ary,
                             newnd, newshape, newstrides):
     """
@@ -2609,6 +2602,16 @@ def np_size(a):
 
     def impl(a):
         return np.asarray(a).size
+    return impl
+
+
+@overload(np.ndim)
+def np_ndim(a):
+    if not type_can_asarray(a):
+        raise errors.TypingError("The argument to np.ndim must be array-like")
+
+    def impl(a):
+        return np.asarray(a).ndim
     return impl
 
 # ------------------------------------------------------------------------------
